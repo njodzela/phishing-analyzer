@@ -1,0 +1,38 @@
+Delivered-To: victim@example.com
+Received: from mail.attacker.com (mail.attacker.com [198.51.100.22])
+        by mx.example.com with ESMTPS id abc123def
+        for <victim@example.com>; Sat, 21 Feb 2026 01:51:57 -0600
+Authentication-Results: mx.example.com; spf=softfail (domain of attacker.com does not designate 198.51.100.22 as permitted sender); dkim=fail; dmarc=fail
+Date: Sat, 21 Feb 2026 01:50:00 -0600
+From: "IT Support" <admin@example.com>
+Reply-To: support@attacker.com
+To: victim@example.com
+Message-ID: <1234567890@attacker.com>
+Subject: URGENT: Password Expiry Notification
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary-12345"
+
+--boundary-12345
+Content-Type: text/plain; charset="utf-8"
+
+Dear User,
+
+Your password will expire in 24 hours. Please click the link below to update your password immediately:
+http://update-password.attacker.com/login
+
+Failure to do so will result in account lockout.
+
+Please see the attached policy document for more information.
+
+Thanks,
+IT Support
+
+--boundary-12345
+Content-Type: application/pdf; name="IT_Policy.pdf"
+Content-Disposition: attachment; filename="IT_Policy.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmogPDwvTGVuZ3RoIDMgMCBSPj4Kc3RyZWFtCnNvbWUg
+ZmFrZSBwZGYgY29udGVudAplbmRzdHJlYW0KZW5kb2JqCg==
+
+--boundary-12345--
