@@ -5,6 +5,7 @@ import re
 import os
 import requests
 import base64
+import time
 from typing import Dict, List, Any
 from rich.console import Console
 from rich.table import Table
@@ -19,9 +20,10 @@ def parse_args():
     parser.add_argument("--vt-api", help="VirusTotal API key.", default=os.getenv("VT_API_KEY"))
     parser.add_argument("--abuseipdb-api", help="AbuseIPDB API key.", default=os.getenv("ABUSEIPDB_API_KEY"))
     parser.add_argument("--output-html", help="Path to output HTML report.", default="report.html")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output.")
     return parser.parse_args()
 
-def extract_ip_from_received(received_headers: List[str]) -> str:
+def extract_ip_from_received(received_headers: List[str]) -> str | None:
     ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
     for header in received_headers:
         ips = ip_pattern.findall(header)
@@ -34,7 +36,7 @@ def extract_urls(text: str) -> List[str]:
     url_pattern = re.compile(r'(https?://[^\s<"\']+)', re.IGNORECASE)
     return list(set(url_pattern.findall(text)))
 
-def parse_eml(file_path: str) -> Dict[str, Any]:
+def parse_eml(file_path: str, verbose: bool = False) -> Dict[str, Any]:
     with open(file_path, "rb") as f:
         msg = email.message_from_binary_file(f, policy=policy.default)
     
@@ -52,9 +54,9 @@ def parse_eml(file_path: str) -> Dict[str, Any]:
     body_text = ""
     for part in msg.walk():
         content_type = part.get_content_type()
-        content_disposition = str(part.get("Content-Disposition"))
+        content_disposition = str(part.get("Content-Disposition") or "")
         
-        if "attachment" in content_disposition or part.get_filename():
+        if "attachment" in content_disposition.lower() or part.get_filename():
             filename = part.get_filename()
             if filename:
                 extracted["attachments"].append(filename)
@@ -63,11 +65,13 @@ def parse_eml(file_path: str) -> Dict[str, Any]:
             try:
                 payload = part.get_payload(decode=True)
                 if payload:
-                    body_text += payload.decode(errors='ignore') + "\n"
-            except:
-                pass
+                    charset = part.get_content_charset() or 'utf-8'
+                    body_text += payload.decode(charset, errors='ignore') + "\n"
+            except Exception as e:
+                if verbose:
+                    console.print(f"[yellow]Warning: Failed to decode part: {e}[/yellow]")
                 
-    extracted["urls"] = extract_urls(body_text)
+    extracted["urls"] = extract_urls(body_text + " " + " ".join(extracted["received"]))
     extracted["sender_ip"] = extract_ip_from_received(extracted["received"])
     
     return extracted
@@ -87,11 +91,13 @@ def check_virustotal(url: str, api_key: str) -> Dict[str, Any]:
             stats = data['data']['attributes']['last_analysis_stats']
             return {"status": "success", "malicious": stats['malicious'], "suspicious": stats['suspicious'], "harmless": stats['harmless']}
         elif response.status_code == 404:
-            return {"status": "not_found", "reason": "Not found in VT"}
+            requests.post("https://www.virustotal.com/api/v3/urls", data={"url": url}, headers=headers, timeout=10)
+            time.sleep(2)
+            return {"status": "submitted", "reason": "URL submitted for scanning"}
         else:
             return {"status": "error", "reason": f"HTTP {response.status_code}"}
     except Exception as e:
-        return {"status": "error", "reason": "Request failed"}
+        return {"status": "error", "reason": str(e)[:100]}
 
 def check_abuseipdb(ip: str, api_key: str) -> Dict[str, Any]:
     if not api_key:
@@ -269,12 +275,13 @@ def main():
         return
         
     with console.status(f"[bold blue]Analyzing {args.eml_file}..."):
-        eml_data = parse_eml(args.eml_file)
+        eml_data = parse_eml(args.eml_file, verbose=args.verbose)
         
         vt_results = {}
         if eml_data["urls"]:
             for u in eml_data["urls"]:
                 vt_results[u] = check_virustotal(u, args.vt_api)
+                time.sleep(1.5)  # Respect VT free tier rate limits
                 
         ip_results = {}
         if eml_data["sender_ip"]:
